@@ -1,7 +1,7 @@
 
 name: Build HushFacebook Patches
 
-on:
+'on':
   workflow_dispatch:
 
 permissions:
