@@ -496,7 +496,12 @@ public final class FeedVideoAlone {
         }
     }
 
-    /** Resizes measured 9:16 page containers only when the viewport is visibly taller. */
+    /**
+     * Resizes the vertical pager's attached video pages to its viewport. Do not assume a 9:16
+     * page: landscape videos can make Facebook measure the page to the video's aspect ratio,
+     * leaving a large black gap above and below it. Matching sibling pages, rather than the
+     * video surface's aspect ratio, identifies the pager and avoids resizing the video itself.
+     */
     private static void resizePortraitVideoPages(View view, int screenWidth, int screenHeight) {
         if (!(view instanceof ViewGroup)) return;
 
@@ -504,27 +509,35 @@ public final class FeedVideoAlone {
         int parentWidth = parent.getWidth();
         int parentHeight = parent.getHeight();
         if (parentWidth >= screenWidth * 0.75f && parentHeight >= screenHeight * 0.75f) {
-            int pageCount = 0;
+            int shortPageLimit = parentHeight - Math.max(80, screenHeight / 20);
+            List<View> pages = new ArrayList<>();
             for (int i = 0; i < parent.getChildCount(); i++) {
                 View child = parent.getChildAt(i);
-                if (isPortraitPage(child, screenWidth)
-                        && child.getHeight() < parentHeight - Math.max(80, screenHeight / 20)) {
-                    pageCount++;
+                if (isVideoPageCandidate(child, screenWidth, screenHeight)
+                        && child.getHeight() < shortPageLimit) {
+                    pages.add(child);
                 }
             }
-            // Seeing at least two matching pages identifies the vertical paging list, not the
-            // video's own surface. Resize every matching attached page so a swipe stays seamless.
-            if (pageCount >= 2) {
-                for (int i = 0; i < parent.getChildCount(); i++) {
-                    View child = parent.getChildAt(i);
-                    if (!isPortraitPage(child, screenWidth)
-                            || child.getHeight() >= parentHeight - Math.max(80, screenHeight / 20)) {
-                        continue;
-                    }
-                    ViewGroup.LayoutParams params = child.getLayoutParams();
+
+            // Pager pages are siblings with comparable measured sizes. Require at least two so
+            // ordinary full-width controls, captions, and the video surface are not mistaken for pages.
+            boolean sameSizedPages = pages.size() >= 2;
+            if (sameSizedPages) {
+                int minHeight = Integer.MAX_VALUE;
+                int maxHeight = 0;
+                for (View page : pages) {
+                    minHeight = Math.min(minHeight, page.getHeight());
+                    maxHeight = Math.max(maxHeight, page.getHeight());
+                }
+                sameSizedPages = maxHeight - minHeight <= Math.max(120, screenHeight / 10);
+            }
+
+            if (sameSizedPages) {
+                for (View page : pages) {
+                    ViewGroup.LayoutParams params = page.getLayoutParams();
                     if (params != null && params.height != parentHeight) {
                         params.height = parentHeight;
-                        child.setLayoutParams(params);
+                        page.setLayoutParams(params);
                     }
                 }
             }
@@ -535,13 +548,13 @@ public final class FeedVideoAlone {
         }
     }
 
-    private static boolean isPortraitPage(View view, int screenWidth) {
+    private static boolean isVideoPageCandidate(View view, int screenWidth, int screenHeight) {
         if (!(view instanceof ViewGroup)) return false;
         int width = view.getWidth();
         int height = view.getHeight();
-        if (width < screenWidth * 0.75f || width <= 0 || height <= 0) return false;
-        float heightToWidth = (float) height / (float) width;
-        return heightToWidth >= 1.55f && heightToWidth <= 1.95f;
+        return width >= screenWidth * 0.75f
+                && height >= screenHeight * 0.30f
+                && height > 0;
     }
 
     private static long now() {
