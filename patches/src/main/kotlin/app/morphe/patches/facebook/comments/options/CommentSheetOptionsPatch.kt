@@ -277,7 +277,7 @@ val commentSheetOptionsPatch = bytecodePatch(
 
 private fun refuse(detail: String): Nothing = throw PatchException("$PATCH: $detail")
 
-internal fun BytecodePatchContext.holders(string: String) =
+private fun BytecodePatchContext.holders(string: String) =
     classDefByStrings(string, StringComparisonType.EQUALS).filterNot { it.type.startsWith(EXTENSION_CLASSES) }
 
 private fun calls(method: Method): List<MethodReference> =
