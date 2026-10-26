@@ -904,48 +904,31 @@ internal fun videoCommentBar(holders: List<ClassDef>, buttons: Method): Method {
 }
 
 /**
- * Before the inner comment row is instantiated, check the standalone setting.
- * When enabled, clear the instance register and jump past its constructor.
+ * Return no video comment bar when the standalone setting is enabled.
+ * The bar render itself returns an object, so returning null here prevents the
+ * entire composer (including its outline) from being rendered.
  */
-internal fun MutableMethod.skipVideoCommentComposerCreation(row: Method) {
-    val rowType = row.definingClass
+internal fun MutableMethod.hideVideoCommentComposer() {
     val code = implementation?.instructions?.toList().orEmpty()
-    val creations = code.indices.filter { index ->
-        code[index].opcode == Opcode.NEW_INSTANCE &&
-            ((code[index] as? ReferenceInstruction)?.reference as? TypeReference)?.type == rowType
-    }
-    val createAt = creations.singleOrNull()
-        ?: refuse("${descriptor()} creates ${creations.size} instances of $rowType, expected one")
-    val constructorAt = (createAt + 1 until code.size).firstOrNull { index ->
-        val instruction = code[index]
-        if (!instruction.opcode.name.startsWith("INVOKE_DIRECT")) return@firstOrNull false
-        val reference = (instruction as? ReferenceInstruction)?.reference as? MethodReference
-        reference?.name == "<init>" && reference.definingClass == rowType
-    } ?: refuse("${descriptor()} has no constructor call for $rowType after instruction $createAt")
-    val afterConstructor = constructorAt + 1
-    if (code.getOrNull(afterConstructor)?.opcode != Opcode.GOTO_16) {
-        refuse("${descriptor()} doesn't jump to the common render path after constructing $rowType")
+    if (code.isEmpty()) refuse("${descriptor()} has no instructions")
+    if (!returnType.startsWith("L") && !returnType.startsWith("[")) {
+        refuse("${descriptor()} does not return an object")
     }
 
-    val instance = (code[createAt] as OneRegisterInstruction).registerA
-    val live = RegisterLiveness.of(this).liveInto(createAt)
-    val free = (0 until minOf(localRegisterCount(), 256))
-        .firstOrNull { it !in live && it != instance }
-        ?: refuse("${descriptor()} has no free register before creating $rowType")
-    val clear = if (instance < 16) "const/4 v$instance, 0x0" else "const/16 v$instance, 0x0"
-    val createLabel = "createVideoCommentRow$createAt"
-    val skipLabel = "skipVideoCommentConstructor$createAt"
+    val live = RegisterLiveness.of(this).liveInto(0)
+    val free = (0 until localRegisterCount())
+        .firstOrNull { it !in live }
+        ?: refuse("${descriptor()} has no free local register at the start of the render")
 
     addInstructionsWithLabels(
-        createAt,
+        0,
         """
             invoke-static {}, $HIDES_VIDEO_COMMENT_COMPOSER
             move-result v$free
-            if-eqz v$free, :$createLabel
-            $clear
-            goto :$skipLabel
+            if-eqz v$free, :showVideoCommentBar
+            const/4 v0, 0x0
+            return-object v0
         """,
-        ExternalLabel(createLabel, getInstruction(createAt)),
-        ExternalLabel(skipLabel, getInstruction(afterConstructor)),
+        ExternalLabel("showVideoCommentBar", getInstruction(0)),
     )
 }
