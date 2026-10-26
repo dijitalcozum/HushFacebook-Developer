@@ -275,32 +275,9 @@ val commentSheetOptionsPatch = bytecodePatch(
     }
 }
 
-/**
- * Hides only the comment composer shown under Facebook's full-screen video viewer.
- * This is a standalone patch so it can be selected independently in Morphe Manager.
- */
-@Suppress("unused")
-val hideVideoCommentComposerPatch = bytecodePatch(
-    name = "Hide video comment composer",
-    description = "Hide the Add a comment box under full-screen videos. Ordinary post comment boxes are unchanged. Starts off.",
-) {
-    category("Comments")
-    dependsOn(settingsPatch, facebookExtensionPatch)
-    compatibleWith(*AppCompatibilities.facebook())
-
-    execute {
-        requireStatusMethod("hideVideoCommentComposer")
-        val viewer = viewerButtons(holders(VIEWER_GIF))
-        val videoBar = videoCommentBar(holders(VIDEO_COMMENT_BAR), viewer.render)
-        mutableClassDefBy(videoBar.definingClass).methods.single { it.descriptor() == videoBar.descriptor() }
-            .skipVideoCommentComposerCreation(viewer.render)
-        enableStatus("hideVideoCommentComposer")
-    }
-}
-
 private fun refuse(detail: String): Nothing = throw PatchException("$PATCH: $detail")
 
-private fun BytecodePatchContext.holders(string: String) =
+internal fun BytecodePatchContext.holders(string: String) =
     classDefByStrings(string, StringComparisonType.EQUALS).filterNot { it.type.startsWith(EXTENSION_CLASSES) }
 
 private fun calls(method: Method): List<MethodReference> =
@@ -924,29 +901,6 @@ internal fun videoCommentBar(holders: List<ClassDef>, buttons: Method): Method {
         .distinctBy { it.descriptor() }
     return renders.singleOrNull()
         ?: throw PatchException("Hide video comment composer: expected one render naming \"$VIDEO_COMMENT_BAR\" in a class building $row, found ${renders.size}")
-}
-
-/**
- * First thing where the video viewer's comment bar renders: on a yes from the extension it returns
- * nothing, so the Add a comment box under a full-screen video is gone with its outline (#213, from
- * @dijitalcozum's patch, which cleared only the box's button row). Asking at the start covers every
- * way out of the render, including the returns its jumps land on, which code put in front of a
- * return would be stepped past. Nothing local is live yet there, so v0 holds the answer.
- */
-internal fun MutableMethod.hideVideoCommentComposer() {
-    if (!returnType.startsWith("L")) refuse("${descriptor()} doesn't return an object")
-    if (localRegisterCount() < 1) refuse("${descriptor()} has no local register for the hook")
-    addInstructionsWithLabels(
-        0,
-        """
-            invoke-static {}, $HIDES_VIDEO_COMMENT_COMPOSER
-            move-result v0
-            if-eqz v0, :bar
-            const/4 v0, 0x0
-            return-object v0
-        """,
-        ExternalLabel("bar", getInstruction(0)),
-    )
 }
 
 /**
