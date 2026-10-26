@@ -33,7 +33,7 @@ val hideVideoCommentComposerPatch = bytecodePatch(
         val viewer = viewerButtons(holders(VIEWER_GIF))
         val videoBar = videoCommentBar(holders(VIDEO_COMMENT_BAR), viewer.render)
         mutableClassDefBy(videoBar.definingClass).methods.single { it.descriptor() == videoBar.descriptor() }
-            .skipVideoCommentComposerCreation(viewer.render)
+            .hideVideoCommentComposer()
         enableStatus("hideVideoCommentComposer")
     }
 }
