@@ -4,6 +4,8 @@
  */
 package app.morphe.patches.facebook.comments.options
 
+import app.morphe.patches.facebook.comments.summaries.descriptor
+
 import app.morphe.patcher.StringComparisonType
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.facebook.feed.aidetected.EXTENSION_CLASSES
