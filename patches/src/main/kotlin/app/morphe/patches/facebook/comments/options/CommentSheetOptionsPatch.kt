@@ -219,7 +219,7 @@ val commentSheetOptionsPatch = bytecodePatch(
     name = "Comment sheet options",
     description = "Small fixes for comments. Stop a long press on Like from opening reactions, hide the GIF and " +
         "sticker buttons, show every reply without tapping View replies, load a whole reply thread as you " +
-        "scroll, open more replies with a tap anywhere on their row, hide Related groups under group posts, hide comments with shop links or your words, hide who is typing and the new comments pop-up, and hide the comment box under full-screen videos. Starts off. Turn on the parts you want in " +
+        "scroll, open more replies with a tap anywhere on their row, hide Related groups under group posts, hide comments with shop links or your words, hide who is typing and the new comments pop-up. Starts off. Turn on the parts you want in " +
         "Hushfacebook settings > Comments.",
 ) {
     category("Comments")
@@ -250,7 +250,6 @@ val commentSheetOptionsPatch = bytecodePatch(
         val replyRow = replyRowTap(holders(VIEW_MORE_REPLIES))
         val feedReplyRow = replyRowTap(holders(FEED_VIEW_MORE_REPLIES), FEED_VIEW_MORE_REPLIES)
         val viewer = viewerButtons(holders(VIEWER_GIF))
-        val videoBar = videoCommentBar(holders(VIDEO_COMMENT_BAR), viewer.render)
 
         mutableClassDefBy(buttons.check.definingClass).methods.single { it.descriptor() == buttons.check.descriptor() }
             .holdButtons(buttons.table)
@@ -272,9 +271,30 @@ val commentSheetOptionsPatch = bytecodePatch(
             .tapWholeReplyRow(feedReplyRow)
         mutableClassDefBy(viewer.render.definingClass).methods.single { it.descriptor() == viewer.render.descriptor() }
             .holdViewerButtons(viewer)
+        enableStatus("commentSheetOptions")
+    }
+}
+
+/**
+ * Hides only the comment composer shown under Facebook's full-screen video viewer.
+ * This is a standalone patch so it can be selected independently in Morphe Manager.
+ */
+@Suppress("unused")
+val hideVideoCommentComposerPatch = bytecodePatch(
+    name = "Hide video comment composer",
+    description = "Hide the Add a comment box under full-screen videos. Ordinary post comment boxes are unchanged. Starts off.",
+) {
+    category("Comments")
+    dependsOn(settingsPatch, facebookExtensionPatch)
+    compatibleWith(*AppCompatibilities.facebook())
+
+    execute {
+        requireStatusMethod("hideVideoCommentComposer")
+        val viewer = viewerButtons(holders(VIEWER_GIF))
+        val videoBar = videoCommentBar(holders(VIDEO_COMMENT_BAR), viewer.render)
         mutableClassDefBy(videoBar.definingClass).methods.single { it.descriptor() == videoBar.descriptor() }
             .skipVideoCommentComposerCreation(viewer.render)
-        enableStatus("commentSheetOptions")
+        enableStatus("hideVideoCommentComposer")
     }
 }
 
@@ -903,7 +923,7 @@ internal fun videoCommentBar(holders: List<ClassDef>, buttons: Method): Method {
         }
         .distinctBy { it.descriptor() }
     return renders.singleOrNull()
-        ?: refuse("expected one render naming \"$VIDEO_COMMENT_BAR\" in a class building $row, found ${renders.size}")
+        ?: throw PatchException("Hide video comment composer: expected one render naming \"$VIDEO_COMMENT_BAR\" in a class building $row, found ${renders.size}")
 }
 
 /**
