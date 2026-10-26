@@ -150,6 +150,10 @@ public final class SettingsStatus {
         return false;
     }
 
+    public static boolean hideVideoCommentComposer() {
+        return false;
+    }
+
     public static boolean fullHeightComments() {
         return false;
     }
