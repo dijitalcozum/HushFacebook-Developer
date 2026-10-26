@@ -904,8 +904,7 @@ internal fun videoCommentBar(holders: List<ClassDef>, buttons: Method): Method {
 }
 
 /**
- * Experimental alternative to returning null from the whole bar's render method.
- * Before the inner comment row is instantiated, check the existing setting.
+ * Before the inner comment row is instantiated, check the standalone setting.
  * When enabled, clear the instance register and jump past its constructor.
  */
 internal fun MutableMethod.skipVideoCommentComposerCreation(row: Method) {
