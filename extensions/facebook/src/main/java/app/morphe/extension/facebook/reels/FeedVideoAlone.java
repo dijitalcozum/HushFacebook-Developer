@@ -9,6 +9,9 @@ import android.app.Application;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 
 import androidx.annotation.Nullable;
 
@@ -187,8 +190,11 @@ public final class FeedVideoAlone {
         @Override
         public void onActivityCreated(Activity activity, @Nullable Bundle state) {
             inFront(activity);
-            if (PLAYER_SCREENS.contains(activity.getClass().getName()) && feedOpenedLately()) {
-                feedPlayer = new WeakReference<>(activity);
+            if (PLAYER_SCREENS.contains(activity.getClass().getName())) {
+                watchFullScreenVideoHeight(activity);
+                if (feedOpenedLately()) {
+                    feedPlayer = new WeakReference<>(activity);
+                }
             }
         }
 
@@ -460,6 +466,82 @@ public final class FeedVideoAlone {
             if (!viewer.closed && viewer.fragment.get() != null) return viewer;
         }
         return null;
+    }
+
+    /**
+     * Watches only Facebook's immersive video activities. Some builds size a portrait page to
+     * 9:16 (width × 16/9) even when the viewport is taller, exposing the next page at the bottom.
+     * Expanding the sibling page containers to the viewport prevents that sliver without changing
+     * the video surface's own aspect ratio.
+     */
+    private static void watchFullScreenVideoHeight(Activity activity) {
+        try {
+            View decor = activity.getWindow().getDecorView();
+            WeakReference<Activity> screenRef = new WeakReference<>(activity);
+            decor.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    Activity screen = screenRef.get();
+                    if (screen == null || screen.isFinishing() || screen.getWindow() == null) return;
+                    View root = screen.getWindow().getDecorView();
+                    int screenWidth = root.getWidth();
+                    int screenHeight = root.getHeight();
+                    if (screenWidth > 0 && screenHeight > 0) {
+                        resizePortraitVideoPages(root, screenWidth, screenHeight);
+                    }
+                }
+            });
+        } catch (Throwable failure) {
+            HookStatus.threw(FAMILY, "full-screen video height", failure);
+        }
+    }
+
+    /** Resizes measured 9:16 page containers only when the viewport is visibly taller. */
+    private static void resizePortraitVideoPages(View view, int screenWidth, int screenHeight) {
+        if (!(view instanceof ViewGroup)) return;
+
+        ViewGroup parent = (ViewGroup) view;
+        int parentWidth = parent.getWidth();
+        int parentHeight = parent.getHeight();
+        if (parentWidth >= screenWidth * 0.75f && parentHeight >= screenHeight * 0.75f) {
+            int pageCount = 0;
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                View child = parent.getChildAt(i);
+                if (isPortraitPage(child, screenWidth)
+                        && child.getHeight() < parentHeight - Math.max(80, screenHeight / 20)) {
+                    pageCount++;
+                }
+            }
+            // Seeing at least two matching pages identifies the vertical paging list, not the
+            // video's own surface. Resize every matching attached page so a swipe stays seamless.
+            if (pageCount >= 2) {
+                for (int i = 0; i < parent.getChildCount(); i++) {
+                    View child = parent.getChildAt(i);
+                    if (!isPortraitPage(child, screenWidth)
+                            || child.getHeight() >= parentHeight - Math.max(80, screenHeight / 20)) {
+                        continue;
+                    }
+                    ViewGroup.LayoutParams params = child.getLayoutParams();
+                    if (params != null && params.height != parentHeight) {
+                        params.height = parentHeight;
+                        child.setLayoutParams(params);
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            resizePortraitVideoPages(parent.getChildAt(i), screenWidth, screenHeight);
+        }
+    }
+
+    private static boolean isPortraitPage(View view, int screenWidth) {
+        if (!(view instanceof ViewGroup)) return false;
+        int width = view.getWidth();
+        int height = view.getHeight();
+        if (width < screenWidth * 0.75f || width <= 0 || height <= 0) return false;
+        float heightToWidth = (float) height / (float) width;
+        return heightToWidth >= 1.55f && heightToWidth <= 1.95f;
     }
 
     private static long now() {
