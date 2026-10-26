@@ -399,17 +399,37 @@ class CommentSheetOptionsFixtureTest {
         val method = context.mutableClassDefBy(bar.type).methods.single { it.descriptor() == render.descriptor() }
         val original = method.implementation!!.instructions.toList()
 
-        method.hideVideoCommentComposer()
+        val createAt = original.indices.single { index ->
+            original[index].opcode == Opcode.NEW_INSTANCE &&
+                (original[index] as? ReferenceInstruction)?.reference.toString() == row.definingClass
+        }
+        val constructorAt = (createAt + 1 until original.size).first { index ->
+            val instruction = original[index]
+            instruction.opcode.name.startsWith("INVOKE_DIRECT") &&
+                instruction.reference() == "$row.definingClass-><init>()V"
+        }
+        val afterConstructor = constructorAt + 1
+        val instance = (original[createAt] as OneRegisterInstruction).registerA
+
+        method.skipVideoCommentComposerCreation(row)
         val patched = method.implementation!!.instructions.toList()
         assertEquals("$where gains five instructions", original.size + 5, patched.size)
-        assertEquals("$where: the extension is asked first", HIDES_VIDEO_COMMENT_COMPOSER, patched[0].reference())
-        assertEquals("$where: its answer", 0, (patched[1] as OneRegisterInstruction).registerA)
-        assertEquals("$where: a no goes on to Facebook", Opcode.IF_EQZ, patched[2].opcode)
-        assertEquals("$where: and lands on Facebook's first instruction", 5,
-            (patched[2] as BuilderOffsetInstruction).target.location.index)
-        assertEquals("$where: a yes returns nothing", listOf(Opcode.CONST_4, Opcode.RETURN_OBJECT),
-            patched.subList(3, 5).map { it.opcode })
-        assertEquals("$where: Facebook's code stays", original.map { it.opcode }, patched.drop(5).map { it.opcode })
+        assertEquals("$where: the extension is asked before creating the row", HIDES_VIDEO_COMMENT_COMPOSER,
+            patched[createAt].reference())
+        val answer = (patched[createAt + 1] as OneRegisterInstruction).registerA
+        assertEquals("$where: a no creates the row as usual", Opcode.IF_EQZ, patched[createAt + 2].opcode)
+        assertEquals("$where: the no branch reaches Facebook's allocation", createAt + 5,
+            (patched[createAt + 2] as BuilderOffsetInstruction).target.location.index)
+        val clear = patched[createAt + 3]
+        assertTrue("$where: a yes clears the new row register", clear.opcode in setOf(Opcode.CONST_4, Opcode.CONST_16))
+        assertEquals("$where: the cleared value is null", 0, (clear as NarrowLiteralInstruction).narrowLiteral)
+        assertEquals("$where: the cleared register is the row", instance, (clear as OneRegisterInstruction).registerA)
+        assertEquals("$where: the yes branch skips the constructor", Opcode.GOTO_16, patched[createAt + 4].opcode)
+        assertEquals("$where: it lands after the constructor", afterConstructor + 5,
+            (patched[createAt + 4] as BuilderOffsetInstruction).target.location.index)
+        assertTrue("$where: the answer uses a different register from the row", answer != instance)
+        assertEquals("$where: Facebook's original instructions stay in order", original.map { it.opcode },
+            patched.filterIndexed { index, _ -> index !in createAt until createAt + 5 }.map { it.opcode })
     }
 
     @Test
