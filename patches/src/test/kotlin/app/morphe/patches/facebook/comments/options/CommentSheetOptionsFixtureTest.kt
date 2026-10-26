@@ -51,7 +51,7 @@ import java.io.File
  * through the extension right after Facebook reads it (#219). The video viewer's comment bar is found by the names
  * of its sticker and GIF buttons, and once both are built the extension is asked and a yes clears
  * them. The whole bar around them is the class naming its layout transition that builds that row,
- * and its render asks first and returns nothing on a yes (#213). Reads the fixture bundles from
+ * and its render skips constructing the comment row on a yes (#213). Reads the fixture bundles from
  * HUSHFACEBOOK_FIXTURE_DIR and skips without it.
  */
 class CommentSheetOptionsFixtureTest {
@@ -406,7 +406,7 @@ class CommentSheetOptionsFixtureTest {
         val constructorAt = (createAt + 1 until original.size).first { index ->
             val instruction = original[index]
             instruction.opcode.name.startsWith("INVOKE_DIRECT") &&
-                instruction.reference() == "$row.definingClass-><init>()V"
+                instruction.reference()?.startsWith("$row.definingClass-><init>(") == true
         }
         val afterConstructor = constructorAt + 1
         val instance = (original[createAt] as OneRegisterInstruction).registerA
